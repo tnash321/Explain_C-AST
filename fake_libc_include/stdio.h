@@ -1,0 +1,11 @@
+typedef int FILE;
+#define NULL ((void*)0)
+#define printf(...) 0
+#define fprintf(...) 0
+#define fopen(...) ((FILE*)0)
+#define fclose(...) 0
+#define fflush(...) 0
+#define fread(...) 0
+#define fwrite(...) 0
+#define fscanf(...) 0
+#define fgets(...) ((char*)0)
