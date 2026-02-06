@@ -94,6 +94,7 @@ def main(filename):
     fake_libc = os.path.join(os.path.dirname(__file__), "fake_libc_include")
     tmp_file = prepare_clean_file(filename, fake_libc)
 
+    # All of the arguments to be ignored
     c_args = [
         f"-I{fake_libc}",
         "-D__attribute__(x)=",
@@ -118,10 +119,11 @@ def main(filename):
     print(f"Total loops found: {visitor.loop_count}")
     print(f"Maximum nesting depth: {visitor.max_depth}")
 
+    # Prints the AST tree
     print("\n\nAST Tree\n")
     ast.show()
 
-        # Cleanup
+    # Cleanup
     if os.path.exists(tmp_file):
         os.remove(tmp_file)
 
