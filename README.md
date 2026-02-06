@@ -7,3 +7,4 @@ Features so far:
 - Strips comments from C source code
 - nested loop detection
 - it detects some parallel program calls
+- prints the AST Tree
