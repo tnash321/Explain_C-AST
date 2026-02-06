@@ -86,7 +86,7 @@ class LoopVisitor(c_ast.NodeVisitor):
         print(f"Current nesting depth: {self.depth}")
 
     def _exit_loop(self):
-        """Decrease depth when leaving a loop."""
+        # Decrease depth when leaving a loop.
         self.depth -= 1
 
 # Main function
@@ -117,6 +117,9 @@ def main(filename):
     print("\n----------- Summary -----------")
     print(f"Total loops found: {visitor.loop_count}")
     print(f"Maximum nesting depth: {visitor.max_depth}")
+
+    print("\n\nAST Tree\n")
+    ast.show()
 
         # Cleanup
     if os.path.exists(tmp_file):
