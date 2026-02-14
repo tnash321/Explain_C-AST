@@ -40,6 +40,40 @@ def prepare_clean_file(source_path, headers_path):
 
     return tmp_file
 
+class LoopInfo:
+    # Stores info about a single loop
+    def __init__(self, line, depth, loop_type):
+        self.line = line                  # Line number of loop start
+        self.depth = depth                # Nesting depth
+        self.loop_type = loop_type        # "for" or "while"
+        self.calls = []                   # Function calls inside this loop
+        self.contains_mpi = False         # True if MPI calls are found
+        self.contains_omp = False         # True if OpenMP runtime calls are found
+
+    def show(self):
+        # Print basic loop info (optional)
+        print(f"Loop at line {self.line}")
+        print(f"Type: {self.loop_type}")
+        print(f"Nesting depth: {self.depth}")
+        if self.calls:
+            print("Function calls inside loop:", ", ".join(self.calls))
+        if self.contains_mpi:
+            print("Contains MPI calls")
+        if self.contains_omp:
+            print("Contains OpenMP calls")
+    
+def load_pragmas(filename):
+    pragmas = set()
+    with open(filename) as f:
+        lines = f.readlines()
+
+    for i, line in enumerate(lines, start=1):
+        if "#pragma omp" in line:
+            pragmas.add(i)
+
+    return pragmas
+
+
 # AST Visitor: Detect loops + MPI/OpenMP calls
 class LoopVisitor(c_ast.NodeVisitor):
     # Tracks loops (for/while), nesting depth, and any MPI/OpenMP function calls inside loops.
@@ -47,6 +81,9 @@ class LoopVisitor(c_ast.NodeVisitor):
         self.depth = 0
         self.max_depth = 0
         self.loop_count = 0
+
+        self.loop_stack = []
+        self.loops = []
 
     def visit_For(self, node):
         self._enter_loop(node, "for")
@@ -61,17 +98,18 @@ class LoopVisitor(c_ast.NodeVisitor):
     def visit_FuncCall(self, node):
         # Called whenever a function call is encountered in the AST.
         # If inside a loop, check if it is an MPI or OpenMP function.
-        func_name = ""
         if isinstance(node.name, c_ast.ID):
             func_name = node.name.name
 
-        # Check for MPI function calls (start with MPI_)
-        if func_name.startswith("MPI_"):
-            print(f"  -> Found MPI call: {func_name} (inside loop at depth {self.depth})")
+            if self.loop_stack:
+                current_loop = self.loop_stack[-1]
+                current_loop.calls.append(func_name)
 
-        # Check for OpenMP pragmas (omp_ functions)
-        if func_name.startswith("omp_"):
-            print(f"  -> Found OpenMP call: {func_name} (inside loop at depth {self.depth})")
+                if func_name.startswith("MPI_"):
+                    current_loop.contains_mpi = True
+
+                if func_name.startswith("omp_"):
+                    current_loop.contains_omp = True
 
         self.generic_visit(node)
 
@@ -82,15 +120,23 @@ class LoopVisitor(c_ast.NodeVisitor):
         self.max_depth = max(self.max_depth, self.depth)
 
         line = node.coord.line if node.coord else "unknown"
-        print(f"Found {loop_type}-loop at line {line}")
-        print(f"Current nesting depth: {self.depth}")
+
+        loop = LoopInfo(line, self.depth, loop_type)
+        self.loop_stack.append(loop)
+        self.loops.append(loop)
+
+        # print(f"Found {loop_type}-loop at line {line}")
+        # print(f"Current nesting depth: {self.depth}")
 
     def _exit_loop(self):
         # Decrease depth when leaving a loop.
+        self.loop_stack.pop()
         self.depth -= 1
 
 # Main function
 def main(filename):
+    pragmas = load_pragmas(filename)
+
     fake_libc = os.path.join(os.path.dirname(__file__), "fake_libc_include")
     tmp_file = prepare_clean_file(filename, fake_libc)
 
@@ -108,11 +154,34 @@ def main(filename):
 
     # Parse the file into an AST
     ast = parse_file(tmp_file, use_cpp=True, cpp_args=c_args)
-    print("--------- AST Analysis --------")
+    # print("--------- AST Analysis --------")
 
     # Visit loops and MPI/OpenMP calls
     visitor = LoopVisitor()
     visitor.visit(ast)
+
+    print("--------- Loop Analysis ---------")
+        
+    for loop in visitor.loops:
+        print(f"Loop at line {loop.line}")
+        print(f"Type: {loop.loop_type}")
+        print(f"Nesting depth: {loop.depth}")
+
+        if (loop.line - 1) in pragmas:
+            print("OpenMP pragma detected above this loop")
+
+        if loop.contains_mpi:
+            print("Contains MPI calls")
+
+        if loop.contains_omp:
+            print("Contains OpenMP runtime calls")
+
+        if loop.calls:
+            print("Function calls inside loop:")
+            for c in loop.calls:
+                print(f"  - {c}")
+
+        print()
 
     # Print summary
     print("\n----------- Summary -----------")
@@ -120,8 +189,8 @@ def main(filename):
     print(f"Maximum nesting depth: {visitor.max_depth}")
 
     # Prints the AST tree
-    print("\n\nAST Tree\n")
-    ast.show()
+    # print("\n\nAST Tree\n")
+    # ast.show()
 
     # Cleanup
     if os.path.exists(tmp_file):
