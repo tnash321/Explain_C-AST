@@ -50,6 +50,10 @@ class LoopInfo:
         self.contains_mpi = False         # True if MPI calls are found
         self.contains_omp = False         # True if OpenMP runtime calls are found
 
+    #def add_penalty(self, amount, reason):
+    #    self.score -= amount
+    #    self.reasons.append(reason)
+
     def show(self):
         # Print basic loop info (optional)
         print(f"Loop at line {self.line}")
@@ -85,6 +89,9 @@ class LoopVisitor(c_ast.NodeVisitor):
         self.loop_stack = []
         self.loops = []
 
+        # self.score = 100       # Initialize parallelizable score
+        # self.reasons = []      # Reasons for score
+
     def visit_For(self, node):
         self._enter_loop(node, "for")
         self.generic_visit(node)
@@ -111,6 +118,10 @@ class LoopVisitor(c_ast.NodeVisitor):
                 if func_name.startswith("omp_"):
                     current_loop.contains_omp = True
 
+                #if func_name.startswith("printf"):
+                #    current_loop.reasons.append(f"Function {func_name} may serialize loop")
+                #    current_loop.score -= 15
+
         self.generic_visit(node)
 
     def _enter_loop(self, node, loop_type):
@@ -131,6 +142,7 @@ class LoopVisitor(c_ast.NodeVisitor):
     def _exit_loop(self):
         # Decrease depth when leaving a loop.
         self.loop_stack.pop()
+        #self.score = max(0, min(100, self.score))
         self.depth -= 1
 
 # Main function
@@ -181,16 +193,13 @@ def main(filename):
             for c in loop.calls:
                 print(f"  - {c}")
 
-        print()
-
     # Print summary
     print("\n----------- Summary -----------")
     print(f"Total loops found: {visitor.loop_count}")
     print(f"Maximum nesting depth: {visitor.max_depth}")
 
-    # Prints the AST tree
-    # print("\n\nAST Tree\n")
-    # ast.show()
+    with open("c_ast.txt", "w") as f:
+        ast.show(buf = f, showcoord = True)
 
     # Cleanup
     if os.path.exists(tmp_file):
