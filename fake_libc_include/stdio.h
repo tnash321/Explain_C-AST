@@ -1,11 +1,18 @@
+#ifndef _FAKE_STDIO_H
+#define _FAKE_STDIO_H
+
 typedef int FILE;
-#define NULL ((void*)0)
-#define printf(...) 0
-#define fprintf(...) 0
-#define fopen(...) ((FILE*)0)
-#define fclose(...) 0
-#define fflush(...) 0
-#define fread(...) 0
-#define fwrite(...) 0
-#define fscanf(...) 0
-#define fgets(...) ((char*)0)
+
+int printf(const char *format, ...);
+int fprintf(FILE *stream, const char *format, ...);
+int sprintf(char *str, const char *format, ...);
+int snprintf(char *str, int size, const char *format, ...);
+
+int puts(const char *str);
+int putchar(int c);
+
+int scanf(const char *format, ...);
+int getchar(void);
+
+#endif
+
