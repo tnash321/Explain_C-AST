@@ -102,6 +102,13 @@ class LoopVisitor(c_ast.NodeVisitor):
         self.generic_visit(node)
         self._exit_loop()
 
+    def visit_Break(self, node):
+        if self.loop_stack:
+            loop = self.loop_stack[-1]
+            loop.score -= 10
+            loop.reasons.append("Contains break statement")
+            
+
     def visit_FuncCall(self, node):
         # Called whenever a function call is encountered in the AST.
         # If inside a loop, check if it is an MPI or OpenMP function.
@@ -137,13 +144,13 @@ class LoopVisitor(c_ast.NodeVisitor):
         self.loop_stack.append(loop)
         self.loops.append(loop)
 
-        # print(f"Found {loop_type}-loop at line {line}")
-        # print(f"Current nesting depth: {self.depth}")
+        if self.depth > 1:
+            loop.score -= 10
+            loop.reasons.append("Nested loop increases complexity")
 
     def _exit_loop(self):
         # Decrease depth when leaving a loop.
         self.loop_stack.pop()
-        #self.score = max(0, min(100, self.score))
         self.depth -= 1
 
 # Main function
@@ -167,7 +174,9 @@ def main(filename):
 
     # Parse the file into an AST
     ast = parse_file(tmp_file, use_cpp=True, cpp_args=c_args)
-    # print("--------- AST Analysis --------")
+    print("--------- AST Analysis --------")
+    print("Testing file:", filename)
+    print()
 
     # Visit loops and MPI/OpenMP calls
     visitor = LoopVisitor()
@@ -203,7 +212,7 @@ def main(filename):
         print()
 
     # Print summary
-    print("\n----------- Summary -----------")
+    print("----------- Summary -----------")
     print(f"Total loops found: {visitor.loop_count}")
     print(f"Maximum nesting depth: {visitor.max_depth}")
 
