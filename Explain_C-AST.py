@@ -102,6 +102,7 @@ class LoopVisitor(c_ast.NodeVisitor):
         self.generic_visit(node)
         self._exit_loop()
 
+    # If loop has break statement, subtract score
     def visit_Break(self, node):
         if self.loop_stack:
             loop = self.loop_stack[-1]
@@ -144,6 +145,7 @@ class LoopVisitor(c_ast.NodeVisitor):
         self.loop_stack.append(loop)
         self.loops.append(loop)
 
+        # If loop is nested, subtract from score
         if self.depth > 1:
             loop.score -= 10
             loop.reasons.append("Nested loop increases complexity")
@@ -203,6 +205,7 @@ def main(filename):
             for c in loop.calls:
                 print(f"  - {c}")
 
+        # Print parallelizable score if changed
         if loop.score != 100:
             print(f"Loop parallelizable score: {loop.score} for these reasons:")
 
