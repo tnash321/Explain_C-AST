@@ -53,10 +53,6 @@ class LoopInfo:
         self.score = 100       # Initialize parallelizable score
         self.reasons = []      # Reasons for score
 
-    def add_penalty(self, amount, reason):
-        self.score -= amount
-        self.reasons.append(reason)
-
     def show(self):
         # Print basic loop info (optional)
         print(f"Loop at line {self.line}")
@@ -84,7 +80,8 @@ def load_pragmas(filename):
 # AST Visitor: Detect loops + MPI/OpenMP calls
 class LoopVisitor(c_ast.NodeVisitor):
     # Tracks loops (for/while), nesting depth, and any MPI/OpenMP function calls inside loops.
-    def __init__(self):
+    def __init__(self, global_vars):
+        self.global_vars = global_vars
         self.depth = 0
         self.max_depth = 0
         self.loop_count = 0
@@ -108,6 +105,30 @@ class LoopVisitor(c_ast.NodeVisitor):
             loop = self.loop_stack[-1]
             loop.score -= 10
             loop.reasons.append("Contains break statement")
+
+    def visit_Assignment(self, node):
+        if not self.loop_stack:
+            self.generic_visit(node)
+            return
+
+        loop = self.loop_stack[-1]
+
+        # Only handle the simple case: variable assignment "x = ..."
+        if isinstance(node.lvalue, c_ast.ID):
+            var_name = node.lvalue.name
+
+            # Global write check
+            if var_name in self.global_vars:
+                loop.score -= 30
+                loop.reasons.append(f"Writes to global variable '{var_name}'")
+
+            # Simple reduction check
+            if node.op == "+=":
+                loop.score -= 10
+                loop.reasons.append(f"Possible reduction on '{var_name}' (uses +=)")
+
+        # Always keep walking
+        self.generic_visit(node)
             
 
     def visit_FuncCall(self, node):
@@ -155,6 +176,16 @@ class LoopVisitor(c_ast.NodeVisitor):
         self.loop_stack.pop()
         self.depth -= 1
 
+class GlobalCollector:
+    def __init__(self):
+        self.globals = set()
+
+    def collect(self, ast):
+        # In pycparser, file-scope declarations live in ast.ext
+        for ext in ast.ext:
+            if isinstance(ext, c_ast.Decl) and ext.name:
+                self.globals.add(ext.name)
+
 # Main function
 def main(filename):
     pragmas = load_pragmas(filename)
@@ -176,12 +207,18 @@ def main(filename):
 
     # Parse the file into an AST
     ast = parse_file(tmp_file, use_cpp=True, cpp_args=c_args)
+
+     # Collect global variables
+    global_collector = GlobalCollector()
+    global_collector.collect(ast)
+    global_vars = global_collector.globals
+
     print("--------- AST Analysis --------")
     print("Testing file:", filename)
     print()
 
     # Visit loops and MPI/OpenMP calls
-    visitor = LoopVisitor()
+    visitor = LoopVisitor(global_vars)
     visitor.visit(ast)
 
     print("--------- Loop Analysis ---------")
@@ -232,3 +269,12 @@ if __name__ == "__main__":
         print("Usage: python3 Explain_C-AST.py <file.c>")
         sys.exit(1)
     main(sys.argv[1])
+
+
+'''
+    Unused code to add later:
+
+    def add_penalty(self, amount, reason):
+        self.score -= amount
+        self.reasons.append(reason)
+'''
