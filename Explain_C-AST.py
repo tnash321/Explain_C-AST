@@ -2,7 +2,7 @@
 # CSCI 490: Capstone Project
 # CSU Chico Spring 2026
 
-# test program correctness with pytest -v
+# test program correctness: with pytest -v
 
 import sys
 import os
@@ -309,12 +309,3 @@ if __name__ == "__main__":
         print("Usage: python3 Explain_C-AST.py <file.c>")
         sys.exit(1)
     main(sys.argv[1])
-
-
-'''
-    Unused code to add later:
-
-    def add_penalty(self, amount, reason):
-        self.score -= amount
-        self.reasons.append(reason)
-'''
