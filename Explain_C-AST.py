@@ -129,8 +129,46 @@ class LoopVisitor(c_ast.NodeVisitor):
                 loop.score -= 10
                 loop.reasons.append(f"Possible reduction on '{var_name}' (uses +=)")
 
+         # Scalar self‑use: x = f(x, …)
+        if isinstance(node.lvalue, c_ast.ID):
+            lhs = node.lvalue.name
+            if self._uses_id(node.rvalue, lhs):
+                loop.score -= 20
+                loop.reasons.append(f"Potential scalar loop‑carried dependency on '{lhs}'")
+
+        # Array self‑use: arr[i] = f(arr[...], …)
+        if isinstance(node.lvalue, c_ast.ArrayRef):
+            # the base array name (ignore index)
+            if isinstance(node.lvalue.name, c_ast.ID):
+                arr_name = node.lvalue.name.name
+                if self._uses_array(node.rvalue, arr_name):
+                    loop.score -= 30
+                    loop.reasons.append(f"Potential loop‑carried dependency on array '{arr_name}'")
+
         # Always keep walking
         self.generic_visit(node)
+
+    def _uses_id(self, expr, name):
+        found = False
+        class Finder(c_ast.NodeVisitor):
+            def visit_ID(self, node):
+                nonlocal found
+                if node.name == name:
+                    found = True
+        Finder().visit(expr)
+        return found
+
+    def _uses_array(self, expr, arr_name):
+        # Return True if expr contains any ArrayRef whose base name is arr_name.
+        # This is a coarse check for arr[...] in the RHS.
+        found = False
+        class Finder(c_ast.NodeVisitor):
+            def visit_ArrayRef(self, node):
+                nonlocal found
+                if isinstance(node.name, c_ast.ID) and node.name.name == arr_name:
+                    found = True
+        Finder().visit(expr)
+        return found
             
 
     def visit_FuncCall(self, node):
