@@ -2,6 +2,8 @@
 # CSCI 490: Capstone Project
 # CSU Chico Spring 2026
 
+# test program correctness with pytest -v
+
 import sys
 import os
 import re
