@@ -16,5 +16,5 @@ Features so far:
 - Puts the full AST into a separate file
 - Basic loop parallelizable score (in progress)
 
-You may test the program for correctness (no error code) with: pytest -v
+You may test the program for correctness (no error code) with: "pytest -v".
 It will run all of the test programs and indicate whether or not they ran correctly.
