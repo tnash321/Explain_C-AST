@@ -11,10 +11,16 @@ from pycparser import parse_file, c_ast
 
 # Helper function to remove comments
 def strip_comments(text):
-    # Remove both /* */ block comments and // line comments from C code.
-    # Pycparser cannot handle comments, so we must strip them.
-    text = re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
-    text = re.sub(r'//.*', '', text)
+    # Replace /* ... */ with the same number of newline characters
+    def block_replacer(match):
+        s = match.group(0)
+        return "\n" * s.count("\n")
+
+    text = re.sub(r"/\*.*?\*/", block_replacer, text, flags=re.DOTALL)
+
+    # Remove // comments but keep the line itself
+    text = re.sub(r"//.*", "", text)
+
     return text
 
 # Prepare a clean temporary file
@@ -27,6 +33,7 @@ def prepare_clean_file(source_path, headers_path):
         source_text = f.read()
     clean_source = strip_comments(source_text)
     tmp_file = source_path + ".tmp.c"
+
     with open(tmp_file, "w") as f:
         f.write(clean_source)
 
@@ -42,6 +49,14 @@ def prepare_clean_file(source_path, headers_path):
 
     return tmp_file
 
+def load_pragmas(filename):
+    pragmas = set()
+    with open(filename) as f:
+        for i, line in enumerate(f, start=1):
+            if "#pragma omp" in line:
+                pragmas.add(i)
+    return pragmas
+
 class LoopInfo:
     # Stores info about a single loop
     def __init__(self, line, depth, loop_type):
@@ -49,11 +64,12 @@ class LoopInfo:
         self.depth = depth                # Nesting depth
         self.loop_type = loop_type        # "for" or "while"
         self.calls = []                   # Function calls inside this loop
-        self.contains_mpi = False         # True if MPI calls are found
-        self.contains_omp = False         # True if OpenMP runtime calls are found
 
         self.score = 100                  # Initialize parallelizable score
         self.reasons = []                 # Reasons for score
+
+        self.contains_mpi = False         # True if MPI calls are found
+        self.contains_omp = False         # True if OpenMP runtime calls are found
         self.no_dynamic_memory = True     # True if no dynamic memory detected
         self.no_io = True                 # True if no Input/Output detected
 
@@ -68,17 +84,43 @@ class LoopInfo:
             print("Contains MPI calls")
         if self.contains_omp:
             print("Contains OpenMP calls")
-    
-def load_pragmas(filename):
-    pragmas = set()
-    with open(filename) as f:
-        lines = f.readlines()
 
-    for i, line in enumerate(lines, start=1):
-        if "#pragma omp" in line:
-            pragmas.add(i)
+    # Translates loop info into plain english explanations
+    def to_english(self, pragmas):
+        notes = [] # Extra notes
 
-    return pragmas
+        if (self.line - 1) in pragmas:
+            notes.append("There is an OpenMP pragma directly above this loop.")
+
+        if self.contains_mpi:
+            notes.append("Contains MPI calls.")
+
+        if self.contains_omp:
+            notes.append("Contains OpenMP runtime calls.")
+
+        if self.calls:
+            notes.append("Function calls: " + ", ".join(self.calls))
+
+        s = f"The {self.loop_type}-loop at line {self.line} scores {self.score}/100.\n"
+
+        if self.score >= 80:
+            s += "This loop is a good candidate for parallelisation.\n"
+        elif self.score >= 50:
+            s += "This loop could be parallelised, but there are some concerns.\n"
+        else:
+            s += "This loop is poorly suited for parallelisation.\n"
+
+        if notes or self.reasons:
+            s += "Key factors:\n"
+            for reason in self.reasons:
+                s += f" • {reason}\n"
+
+            if notes:
+                s += f"\nMore info in above loop:\n"
+                for note in notes:
+                    s += f" • {note}\n"
+
+        return s
 
 
 # AST Visitor: Detect loops + MPI/OpenMP calls
@@ -123,8 +165,8 @@ class LoopVisitor(c_ast.NodeVisitor):
 
             # Global write check
             if var_name in self.global_vars:
-                loop.score -= 30
-                loop.reasons.append(f"Writes to global variable '{var_name}' (-30)")
+                loop.score -= 50
+                loop.reasons.append(f"Writes to global variable '{var_name}', which may cause shared-state conflicts (-50)")
 
             # Simple reduction check
             if node.op == "+=":
@@ -293,10 +335,10 @@ class GlobalCollector:
 
 # Main function
 def main(filename):
-    pragmas = load_pragmas(filename)
-
     fake_libc = os.path.join(os.path.dirname(__file__), "fake_libc_include")
     tmp_file = prepare_clean_file(filename, fake_libc)
+
+    pragmas = load_pragmas(tmp_file)
 
     # All of the arguments to be ignored
     c_args = [
@@ -329,31 +371,7 @@ def main(filename):
     print("--------- Loop Analysis ---------")
         
     for loop in visitor.loops:
-        print(f"Loop at line {loop.line}")
-        print(f"Type: {loop.loop_type}")
-        print(f"Nesting depth: {loop.depth}")
-
-        if (loop.line - 1) in pragmas:
-            print("OpenMP pragma detected above this loop")
-
-        if loop.contains_mpi:
-            print("Contains MPI calls")
-
-        if loop.contains_omp:
-            print("Contains OpenMP runtime calls")
-
-        if loop.calls:
-            print("Function calls inside loop:")
-            for c in loop.calls:
-                print(f"  - {c}")
-
-        # Print parallelizable score if changed
-        if loop.score != 100:
-            print(f"Loop parallelizable score: {loop.score} for these reasons:")
-
-            for reason in loop.reasons:
-                print(f" - {reason}")
-
+        print(loop.to_english(pragmas))
         print()
 
     # Print summary
@@ -361,6 +379,7 @@ def main(filename):
     print(f"Total loops found: {visitor.loop_count}")
     print(f"Maximum nesting depth: {visitor.max_depth}")
 
+    # Writes AST into a .txt file
     with open("c_ast.txt", "w") as f:
         ast.show(buf = f, showcoord = True)
 
