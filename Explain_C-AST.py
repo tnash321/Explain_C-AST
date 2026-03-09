@@ -360,8 +360,8 @@ def main(filename):
     global_collector.collect(ast)
     global_vars = global_collector.globals
 
-    print("--------- AST Analysis --------")
-    print("Testing file:", filename)
+    print("---------- Testing file ---------")
+    print(filename)
     print()
 
     # Visit loops and MPI/OpenMP calls
