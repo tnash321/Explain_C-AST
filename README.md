@@ -14,7 +14,7 @@ Features so far:
 - Nested loop detection
 - It detects some parallel program calls
 - Puts the full AST into a separate file
-- Basic loop parallelizable score (in progress)
+- Basic loop parallelizable score
 - Plain english explanations
 
 You may test the program for correctness (no error code) with: "pytest -v".
