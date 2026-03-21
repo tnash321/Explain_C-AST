@@ -66,7 +66,8 @@ class LoopInfo:
         self.calls = []                   # Function calls inside this loop
 
         self.score = 100                  # Initialize parallelizable score
-        self.reasons = []                 # Reasons for score
+        self.pos_reasons = []             # Positive reasons for score
+        self.neg_reasons = []             # Negative reasons for score
 
         self.contains_mpi = False         # True if MPI calls are found
         self.contains_omp = False         # True if OpenMP runtime calls are found
@@ -101,6 +102,9 @@ class LoopInfo:
         if self.calls:
             notes.append("Function calls: " + ", ".join(self.calls))
 
+        # Max score is 100/100
+        self.score = min(self.score, 100)
+
         s = f"The {self.loop_type}-loop at line {self.line} scores {self.score}/100.\n"
 
         if self.score >= 80:
@@ -110,10 +114,22 @@ class LoopInfo:
         else:
             s += "This loop is poorly suited for parallelisation.\n"
 
-        if notes or self.reasons:
-            s += "Key factors:\n"
-            for reason in self.reasons:
-                s += f" • {reason}\n"
+        if notes or self.pos_reasons or self.neg_reasons:
+            s += "\nKey reasons for score:\n"
+
+            s += "\nPositives:\n"
+            if self.pos_reasons:
+                for reason in self.pos_reasons:
+                    s += f" • {reason}\n"
+            else:
+                s += f" • None detected\n"
+
+            s += "\nNegatives:\n"
+            if self.neg_reasons:
+                for reason in self.neg_reasons:
+                    s += f" • {reason}\n"
+            else:
+                s += " • None detected\n"
 
             if notes:
                 s += f"\nMore info in above loop:\n"
@@ -150,7 +166,7 @@ class LoopVisitor(c_ast.NodeVisitor):
         if self.loop_stack:
             loop = self.loop_stack[-1]
             loop.score -= 10
-            loop.reasons.append("Contains break statement (-10)")
+            loop.neg_reasons.append("Contains break statement (-10)")
 
     def visit_Assignment(self, node):
         if not self.loop_stack:
@@ -166,19 +182,19 @@ class LoopVisitor(c_ast.NodeVisitor):
             # Global write check
             if var_name in self.global_vars:
                 loop.score -= 50
-                loop.reasons.append(f"Writes to global variable '{var_name}', which may cause shared-state conflicts (-50)")
+                loop.neg_reasons.append(f"Writes to global variable '{var_name}', which may cause shared-state conflicts (-50)")
 
             # Simple reduction check
             if node.op == "+=":
                 loop.score -= 10
-                loop.reasons.append(f"Possible reduction on '{var_name}' (uses +=) (-10)")
+                loop.neg_reasons.append(f"Possible reduction on '{var_name}' (uses +=) (-10)")
 
          # Scalar self‑use: x = f(x, …)
         if isinstance(node.lvalue, c_ast.ID):
             lhs = node.lvalue.name
             if self._uses_id(node.rvalue, lhs):
                 loop.score -= 20
-                loop.reasons.append(f"Potential scalar loop‑carried dependency on '{lhs}' (-20)")
+                loop.neg_reasons.append(f"Potential scalar loop‑carried dependency on '{lhs}' (-20)")
 
         # Array self‑use: arr[i] = f(arr[...], …)
         if isinstance(node.lvalue, c_ast.ArrayRef):
@@ -187,7 +203,7 @@ class LoopVisitor(c_ast.NodeVisitor):
                 arr_name = node.lvalue.name.name
                 if self._uses_array(node.rvalue, arr_name):
                     loop.score -= 30
-                    loop.reasons.append(f"Potential loop‑carried dependency on array '{arr_name}' (-30)")
+                    loop.neg_reasons.append(f"Potential loop‑carried dependency on array '{arr_name}' (-30)")
 
         # Always keep walking
         self.generic_visit(node)
@@ -234,13 +250,13 @@ class LoopVisitor(c_ast.NodeVisitor):
                 if func_name in ('malloc', 'calloc', 'realloc', 'free'):
                     current_loop.no_dynamic_memory = False
                     current_loop.score -= 15
-                    current_loop.reasons.append(f"Memory allocation '{func_name}' inside loop (-15)")
+                    current_loop.neg_reasons.append(f"Memory allocation '{func_name}' inside loop (-15)")
                     
 
                 if func_name in ('printf','fprintf','scanf','fscanf','printf'):
                     current_loop.no_io = False
                     current_loop.score -= 30
-                    current_loop.reasons.append(f"I/O call '{func_name}' inside loop (-30)")
+                    current_loop.neg_reasons.append(f"I/O call '{func_name}' inside loop (-30)")
 
         self.generic_visit(node)
 
@@ -259,7 +275,7 @@ class LoopVisitor(c_ast.NodeVisitor):
         # If loop is nested, subtract from score
         if self.depth > 1:
             loop.score -= 10
-            loop.reasons.append("Nested loop increases complexity")
+            loop.neg_reasons.append("Nested loop increases complexity")
 
         # For for-loops, extract loop variable, etc.
         if isinstance(node, c_ast.For) and isinstance(node.init, c_ast.DeclList):
@@ -268,10 +284,10 @@ class LoopVisitor(c_ast.NodeVisitor):
             if trip_est is not None:
                 if trip_est >= 1000:
                     loop.score += 15
-                    loop.reasons.append(f"Large iteration count (~{trip_est}) (+15)")
+                    loop.pos_reasons.append(f"Large iteration count (~{trip_est}) (+15)")
                 elif trip_est >= 100:
                     loop.score += 5
-                    loop.reasons.append(f"Moderate iteration count (~{trip_est}) (+5)")
+                    loop.pos_reasons.append(f"Moderate iteration count (~{trip_est}) (+5)")
 
     def _estimate_trip_count(self, node):
         # Estimate the number of iterations for a simple 'for' loop.
@@ -317,10 +333,10 @@ class LoopVisitor(c_ast.NodeVisitor):
         loop = self.loop_stack.pop()
         if loop.no_dynamic_memory:
             loop.score += 10
-            loop.reasons.append("No dynamic memory allocation in loop (+10)")
+            loop.pos_reasons.append("No dynamic memory allocation in loop (+10)")
         if loop.no_io:
             loop.score += 10
-            loop.reasons.append("No I/O operations in loop (+10)")
+            loop.pos_reasons.append("No I/O operations in loop (+10)")
         self.depth -= 1
 
 class GlobalCollector:
