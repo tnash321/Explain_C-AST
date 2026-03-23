@@ -166,7 +166,7 @@ class LoopVisitor(c_ast.NodeVisitor):
         if self.loop_stack:
             loop = self.loop_stack[-1]
             loop.score -= 10
-            loop.neg_reasons.append("Contains break statement (-10)")
+            loop.neg_reasons.append("Contains break statement. (-10)")
 
     def visit_Assignment(self, node):
         if not self.loop_stack:
@@ -182,19 +182,19 @@ class LoopVisitor(c_ast.NodeVisitor):
             # Global write check
             if var_name in self.global_vars:
                 loop.score -= 50
-                loop.neg_reasons.append(f"Writes to global variable '{var_name}', which may cause shared-state conflicts (-50)")
+                loop.neg_reasons.append(f"Writes to global variable '{var_name}', which may cause shared-state conflicts. (-50)")
 
             # Simple reduction check
             if node.op == "+=":
                 loop.score -= 10
-                loop.neg_reasons.append(f"Possible reduction on '{var_name}' (uses +=) (-10)")
+                loop.neg_reasons.append(f"Possible reduction on '{var_name}' (uses +=), it is not ideal as independent work. (-10)")
 
          # Scalar self‑use: x = f(x, …)
         if isinstance(node.lvalue, c_ast.ID):
             lhs = node.lvalue.name
             if self._uses_id(node.rvalue, lhs):
                 loop.score -= 20
-                loop.neg_reasons.append(f"Potential scalar loop‑carried dependency on '{lhs}' (-20)")
+                loop.neg_reasons.append(f"Scalar loop-carried dependency on '{lhs}', preventing safe parallel execution. (-20)")
 
         # Array self‑use: arr[i] = f(arr[...], …)
         if isinstance(node.lvalue, c_ast.ArrayRef):
@@ -203,7 +203,7 @@ class LoopVisitor(c_ast.NodeVisitor):
                 arr_name = node.lvalue.name.name
                 if self._uses_array(node.rvalue, arr_name):
                     loop.score -= 30
-                    loop.neg_reasons.append(f"Potential loop‑carried dependency on array '{arr_name}' (-30)")
+                    loop.neg_reasons.append(f"Loop-carried dependency on '{arr_name}', preventing safe parallel execution.  (-30)")
 
         # Always keep walking
         self.generic_visit(node)
@@ -250,13 +250,12 @@ class LoopVisitor(c_ast.NodeVisitor):
                 if func_name in ('malloc', 'calloc', 'realloc', 'free'):
                     current_loop.no_dynamic_memory = False
                     current_loop.score -= 15
-                    current_loop.neg_reasons.append(f"Memory allocation '{func_name}' inside loop (-15)")
-                    
+                    current_loop.neg_reasons.append(f"Dynamic memory allocation inside '{func_name}', it may reduce performance and scalability. (-15)")
 
                 if func_name in ('printf','fprintf','scanf','fscanf','printf'):
                     current_loop.no_io = False
                     current_loop.score -= 30
-                    current_loop.neg_reasons.append(f"I/O call '{func_name}' inside loop (-30)")
+                    current_loop.neg_reasons.append(f"I/O operation inside '{func_name}', it may serialize execution and reduce parallel performance. (-30)")
 
         self.generic_visit(node)
 
@@ -275,7 +274,7 @@ class LoopVisitor(c_ast.NodeVisitor):
         # If loop is nested, subtract from score
         if self.depth > 1:
             loop.score -= 10
-            loop.neg_reasons.append("Nested loop increases complexity")
+            loop.neg_reasons.append("Nested loop increases complexity. (-10)")
 
         # For for-loops, extract loop variable, etc.
         if isinstance(node, c_ast.For) and isinstance(node.init, c_ast.DeclList):
@@ -284,10 +283,10 @@ class LoopVisitor(c_ast.NodeVisitor):
             if trip_est is not None:
                 if trip_est >= 1000:
                     loop.score += 15
-                    loop.pos_reasons.append(f"Large iteration count (~{trip_est}) (+15)")
+                    loop.pos_reasons.append(f"Large iteration count, great to parallelize. (~{trip_est}) (+15)")
                 elif trip_est >= 100:
                     loop.score += 5
-                    loop.pos_reasons.append(f"Moderate iteration count (~{trip_est}) (+5)")
+                    loop.pos_reasons.append(f"Moderate iteration count, good to parallelize. (~{trip_est}) (+5)")
 
     def _estimate_trip_count(self, node):
         # Estimate the number of iterations for a simple 'for' loop.
