@@ -396,7 +396,12 @@ def main(filename):
     print(f"Maximum nesting depth: {visitor.max_depth}")
 
     # Writes AST into a .txt file
-    with open("c_ast.txt", "w") as f:
+    output_file = "c_ast.txt"
+
+    if len(sys.argv) >= 3:
+        output_file = sys.argv[2]
+
+    with open(output_file, "w") as f:
         ast.show(buf = f, showcoord = True)
 
     # Cleanup
@@ -405,7 +410,7 @@ def main(filename):
 
 # Command-line interface
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
+    if len(sys.argv) < 2:
         print("Usage: python3 Explain_C-AST.py <file.c>")
         sys.exit(1)
     main(sys.argv[1])
