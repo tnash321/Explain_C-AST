@@ -107,12 +107,14 @@ class LoopInfo:
 
         s = f"The {self.loop_type}-loop at line {self.line} scores {self.score}/100.\n"
 
+        s += f"This loop has a time-complexity of {self.complexity}.\n\n"
+
         if self.score >= 80:
-            s += "This loop is a good candidate for parallelisation.\n"
+            s += "It loop is a good candidate for parallelisation.\n"
         elif self.score >= 50:
-            s += "This loop could be parallelised, but there are some concerns.\n"
+            s += "It loop could be parallelised, but there are some concerns.\n"
         else:
-            s += "This loop is poorly suited for parallelisation.\n"
+            s += "It loop is poorly suited for parallelisation.\n"
 
         if notes or self.pos_reasons or self.neg_reasons:
             s += "\nKey reasons for score:\n"
@@ -271,6 +273,11 @@ class LoopVisitor(c_ast.NodeVisitor):
         self.loop_stack.append(loop)
         self.loops.append(loop)
 
+        # Calculate loop complexity
+        order = self.estimate_loop_order(node)
+        loop.order = order
+        loop.complexity = self.order_to_complexity(order)
+
         # If loop is nested, subtract from score
         if self.depth > 1:
             loop.score -= 10
@@ -327,6 +334,68 @@ class LoopVisitor(c_ast.NodeVisitor):
 
         # Otherwise, trip count is unknown
         return None
+    
+    # Estimate loop complexity as an exponent:
+    # -1   -> O(log n)
+    # 0    -> O(1)
+    # 1    -> O(n)
+    # 2    -> O(n^2)
+    # None -> Unknown
+    def estimate_loop_order(self, node):
+    # Only handle for-loops
+        if not isinstance(node, c_ast.For):
+            return None
+
+        order = None
+
+        # --- Estimate this loop by itself ---
+        if isinstance(node.cond, c_ast.BinaryOp):
+            right = node.cond.right
+
+            # for (...; i < 100; ...)
+            if isinstance(right, c_ast.Constant):
+                order = 0   # O(1)
+
+            # for (...; i < n; ...)
+            elif isinstance(right, c_ast.ID):
+                order = 1   # O(n)
+
+                # for (...; i < n; i *= 2)
+                if isinstance(node.next, c_ast.Assignment) and node.next.op == "*=":
+                    order = -1   # O(log n)
+
+        if order is None:
+            return None
+
+        # --- Check for nested O(n) loops ---
+        if order == 1:
+            for _, child in node.stmt.children():
+                if isinstance(child, c_ast.For):
+                    inner_order = self.estimate_loop_order(child)
+                    if inner_order == 1:
+                        return 2   # O(n^2)
+
+        return order
+    
+    def order_to_complexity(self, order):
+        if order is None:
+            return "Unknown"
+
+        if order == -1:
+            return "O(log n)"
+
+        if order == 0:
+            return "O(1)"
+
+        if order == 1:
+            return "O(n)"
+
+        if order == 2:
+            return "O(n^2)"
+
+        return f"O(n^{order})"
+
+
 
     def _exit_loop(self):
         loop = self.loop_stack.pop()
