@@ -8,6 +8,7 @@ import sys
 import os
 import re
 from pycparser import parse_file, c_ast
+import argparse
 
 # Helper function to remove comments
 def strip_comments(text):
@@ -345,7 +346,6 @@ class LoopVisitor(c_ast.NodeVisitor):
     # Only handle for-loops
         if not isinstance(node, c_ast.For):
             return None
-
         order = None
 
         # --- Estimate this loop by itself ---
@@ -419,6 +419,22 @@ class GlobalCollector:
 
 # Main function
 def main(filename):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("file", help="C file to analyze")
+    parser.add_argument(
+        "--mode",
+        choices=["english", "score", "ast", "complexity"],
+        default="english",
+        help="Output mode"
+    )
+
+    parser.add_argument(
+        "--ast-output",
+        help="Write AST to a file instead of printing"
+    )
+
+    args = parser.parse_args()
+
     fake_libc = os.path.join(os.path.dirname(__file__), "fake_libc_include")
     tmp_file = prepare_clean_file(filename, fake_libc)
 
@@ -455,7 +471,28 @@ def main(filename):
     print("--------- Loop Analysis ---------")
         
     for loop in visitor.loops:
-        print(loop.to_english(pragmas))
+        if args.mode == "ast":
+            output_file = "c_ast.txt"
+
+            with open(output_file, "w") as f:
+                ast.show(buf=f, showcoord=True)
+
+            print(f"AST written to {output_file}\n")
+
+        elif args.mode == "score":
+            for loop in visitor.loops:
+                print(f"Line {loop.line} → {loop.score}")
+
+        elif args.mode == "complexity":
+            for loop in visitor.loops:
+                print(f"Line {loop.line} → {loop.complexity}")
+
+        elif args.mode == "english":
+            for loop in visitor.loops:
+                print(loop.to_english(pragmas))
+
+        else:
+            print(loop.to_english(pragmas))
         print()
 
     # Print summary
