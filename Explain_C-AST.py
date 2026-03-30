@@ -418,9 +418,12 @@ class GlobalCollector:
                 self.globals.add(ext.name)
 
 # Main function
-def main(filename):
+def main(filename, mode):
     parser = argparse.ArgumentParser()
-    parser.add_argument("file", help="C file to analyze")
+    parser.add_argument(
+        "file",
+        help="C file to analyze"
+    )
     parser.add_argument(
         "--mode",
         choices=["english", "score", "ast", "complexity"],
@@ -462,6 +465,7 @@ def main(filename):
 
     print("---------- Testing file ---------")
     print(filename)
+    print("mode:", mode)
     print()
 
     # Visit loops and MPI/OpenMP calls
@@ -515,7 +519,17 @@ def main(filename):
 
 # Command-line interface
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python3 Explain_C-AST.py <file.c>")
-        sys.exit(1)
-    main(sys.argv[1])
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("file", help="C file to analyze")
+
+    parser.add_argument(
+        "--mode",
+        choices=["english", "score", "ast", "complexity"],
+        default="english",
+        help="Output mode"
+    )
+
+    args = parser.parse_args()
+
+    main(args.file, args.mode)

@@ -1,13 +1,13 @@
 # Explain_C-AST
 A python command line tool that attempts to explain C source code using the pycparser tool, using plain english.
 
-Technologies used: python3, pycparser, pytest
+Technologies used: python3, pycparser, pytest, argparse
 
 ![Alt text](March_2026.jpeg)
 
 This tool creates an AST(Abstract Syntax Tree) from the C program and dissects that to find out information about the program. It automatically strips comments from the source and has header files, so there are no errors when running it. For every for and while loop, this tool records the line number, nesting depth, and any function calls that occur within the loop.
 
-Run it by typing: python3 Explain_C-AST.py <file.c>
+Run it by typing: python3 Explain_C-AST.py <--mode (ast, score, complexity, or english)> <file.c> 
 
 Features so far:
 - Strips comments from C source code
@@ -16,6 +16,8 @@ Features so far:
 - Puts the full AST into a separate file
 - Basic loop parallelizable score
 - Plain english explanations
+- Time-complexity analysis
+- Different modes of output (ast, score, complexity, plain-english)
 
 You may test the program for correctness (no error code) with: "pytest -v".
 It will run all of the test programs and indicate whether or not they ran correctly.
