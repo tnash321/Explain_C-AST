@@ -481,11 +481,11 @@ def main(filename):
 
         elif args.mode == "score":
             for loop in visitor.loops:
-                print(f"Line {loop.line} → {loop.score}")
+                print(f"Line {loop.line} -> {loop.score}")
 
         elif args.mode == "complexity":
             for loop in visitor.loops:
-                print(f"Line {loop.line} → {loop.complexity}")
+                print(f"Line {loop.line} -> {loop.complexity}")
 
         elif args.mode == "english":
             for loop in visitor.loops:
