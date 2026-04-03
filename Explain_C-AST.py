@@ -418,26 +418,7 @@ class GlobalCollector:
                 self.globals.add(ext.name)
 
 # Main function
-def main(filename, mode):
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "file",
-        help="C file to analyze"
-    )
-    parser.add_argument(
-        "--mode",
-        choices=["english", "score", "ast", "complexity"],
-        default="english",
-        help="Output mode"
-    )
-
-    parser.add_argument(
-        "--ast-output",
-        help="Write AST to a file instead of printing"
-    )
-
-    args = parser.parse_args()
-
+def main(filename, mode, output_file = None):
     fake_libc = os.path.join(os.path.dirname(__file__), "fake_libc_include")
     tmp_file = prepare_clean_file(filename, fake_libc)
 
@@ -478,10 +459,13 @@ def main(filename, mode):
         if args.mode == "ast":
             output_file = "c_ast.txt"
 
-            with open(output_file, "w") as f:
-                ast.show(buf=f, showcoord=True)
+            if sys.argv[3] != "":
+                output_file = sys.argv[3]
 
-            print(f"AST written to {output_file}\n")
+            # with open(output_file, "w") as f:
+            #     ast.show(buf=f, showcoord=True)
+
+            # print(f"AST written to {output_file}\n")
 
         elif args.mode == "score":
             for loop in visitor.loops:
@@ -507,10 +491,11 @@ def main(filename, mode):
     # Writes AST into a .txt file
     output_file = "c_ast.txt"
 
-    if len(sys.argv) >= 3:
-        output_file = sys.argv[2]
+    if len(sys.argv) == 5 and sys.argv[4].endswith(".txt"):
+        output_file = sys.argv[4]
 
     with open(output_file, "w") as f:
+        print(f"AST written to {output_file}\n")
         ast.show(buf = f, showcoord = True)
 
     # Cleanup
@@ -530,6 +515,15 @@ if __name__ == "__main__":
         help="Output mode"
     )
 
+    parser.add_argument(
+        "output",
+        nargs="?",
+        help="Optional output file (.txt only)"
+    )
+
     args = parser.parse_args()
 
-    main(args.file, args.mode)
+    if args.output and not args.output.lower().endswith(".txt"):
+        parser.error("Output file must be a .txt file")
+
+    main(args.file, args.mode, args.output)
