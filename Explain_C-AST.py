@@ -455,33 +455,32 @@ def main(filename, mode, output_file = None):
 
     print("--------- Loop Analysis ---------")
         
-    for loop in visitor.loops:
-        if args.mode == "ast":
-            output_file = "c_ast.txt"
-
-            if sys.argv[3] != "":
-                output_file = sys.argv[3]
-
-            # with open(output_file, "w") as f:
-            #     ast.show(buf=f, showcoord=True)
-
-            # print(f"AST written to {output_file}\n")
-
-        elif args.mode == "score":
-            for loop in visitor.loops:
-                print(f"Line {loop.line} -> {loop.score}")
-
-        elif args.mode == "complexity":
-            for loop in visitor.loops:
-                print(f"Line {loop.line} -> {loop.complexity}")
-
-        elif args.mode == "english":
-            for loop in visitor.loops:
-                print(loop.to_english(pragmas))
-
-        else:
-            print(loop.to_english(pragmas))
+    if mode == "ast":
+        ast_file = output_file if output_file else "c_ast.txt"
+        with open(ast_file, "w") as f:
+            ast.show(buf=f, showcoord=True)
+        print(f"AST written to {ast_file}")
         print()
+
+    elif mode == "score":
+        for loop in visitor.loops:
+            print(f"Line {loop.line} -> {loop.score}")
+        print()
+
+    elif mode == "complexity":
+        for loop in visitor.loops:
+            print(f"Line {loop.line} -> {loop.complexity}")
+        print()
+
+    elif mode == "english":
+        for loop in visitor.loops:
+            print(loop.to_english(pragmas))
+            print()
+
+    else:
+        for loop in visitor.loops:
+            print(loop.to_english(pragmas))
+            print()
 
     # Print summary
     print("----------- Summary -----------")
