@@ -464,7 +464,7 @@ def main(filename, mode, output_file = None):
 
     elif mode == "score":
         for loop in visitor.loops:
-            print(f"Line {loop.line} -> {loop.score}")
+            print(f"Line {loop.line} -> {min(loop.score, 100)}")
         print()
 
     elif mode == "complexity":
