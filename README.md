@@ -7,17 +7,17 @@ Technologies used: python3, pycparser, pytest, argparse
 
 This tool creates an AST(Abstract Syntax Tree) from the C program and dissects that to find out information about the program. It automatically strips comments from the source and has header files, so there are no errors when running it. For every for and while loop, this tool records the line number, nesting depth, and any function calls that occur within the loop.
 
-Run it by typing: python3 Explain_C-AST.py <--mode (ast, score, complexity, or english)> <file.c> 
+Run it by typing: python3 Explain_C-AST.py <file.c> --mode <(ast, score, complexity, or english)> <specified output file.txt>
 
 Features so far:
 - Strips comments from C source code
 - Nested loop detection
 - It detects some parallel program calls
-- Puts the full AST into a separate file
+- Puts the full AST into a separate file, and you may optionally specify which
 - Basic loop parallelizable score
 - Plain english explanations
 - Time-complexity analysis
-- Different modes of output (ast, score, complexity, plain-english)
+- Different modes of output: ast output only, score, complexity, plain-english
 
 You may test the program for correctness (no error code) with: "pytest -v".
 It will run all of the test programs and indicate whether or not they ran correctly.
