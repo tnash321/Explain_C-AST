@@ -372,8 +372,15 @@ class LoopVisitor(c_ast.NodeVisitor):
             for _, child in node.stmt.children():
                 if isinstance(child, c_ast.For):
                     inner_order = self.estimate_loop_order(child)
+
                     if inner_order == 1:
                         return 2   # O(n^2)
+
+                    if inner_order == 2:
+                        return 3   # O(n^3)
+                    
+                    if inner_order == 3:
+                        return 4   # O(n^4)
 
         return order
     
@@ -392,6 +399,12 @@ class LoopVisitor(c_ast.NodeVisitor):
 
         if order == 2:
             return "O(n^2)"
+        
+        if order == 3:
+            return "O(n^3)"
+        
+        if order == 4:
+            return "O(n^4)"
 
         return f"O(n^{order})"
 
