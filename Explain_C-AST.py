@@ -430,6 +430,72 @@ class GlobalCollector:
             if isinstance(ext, c_ast.Decl) and ext.name:
                 self.globals.add(ext.name)
 
+
+# Print AST, main function
+def print_clean_ast(node, indent="", last=True):
+    if should_show(node):
+        prefix = "└── " if last else "├── "
+        print(indent + prefix + label_for(node))
+        next_indent = indent + ("    " if last else "│   ")
+    else:
+        next_indent = indent
+
+    children = expand_children(node)
+
+    for i, child in enumerate(children):
+        print_clean_ast(child, next_indent, i == len(children) - 1)
+
+# Helper for print_clean_ast
+def expand_children(node):
+    result = []
+
+    for _, child in node.children():
+        if should_show(child):
+            result.append(child)
+        else:
+            result.extend(expand_children(child))
+
+    return result
+
+# Another helper function, labeling instances
+def should_show(node):
+    return isinstance(node, (
+        c_ast.FuncDef,
+        c_ast.For,
+        c_ast.While,
+        c_ast.FuncCall,
+        c_ast.Assignment,
+        c_ast.Return,
+        c_ast.Decl
+    ))
+
+# Label functions and loops
+def label_for(node):
+    if isinstance(node, c_ast.FuncDef):
+        return f"Function: {node.decl.name}"
+
+    if isinstance(node, c_ast.For):
+        return "For loop"
+
+    if isinstance(node, c_ast.While):
+        return "While loop"
+
+    if isinstance(node, c_ast.FuncCall):
+        if isinstance(node.name, c_ast.ID):
+            return f"Call: {node.name.name}"
+        return "Call"
+
+    if isinstance(node, c_ast.Assignment):
+        return f"Assignment: {node.op}"
+
+    if isinstance(node, c_ast.Return):
+        return "Return"
+
+    if isinstance(node, c_ast.Decl) and node.name:
+        return f"Decl: {node.name}"
+
+    return node.__class__.__name__
+
 # Main function
 def main(filename, mode, output_file = None):
     fake_libc = os.path.join(os.path.dirname(__file__), "fake_libc_include")
@@ -474,6 +540,10 @@ def main(filename, mode, output_file = None):
             ast.show(buf=f, showcoord=True)
         print(f"AST written to {ast_file}")
         print()
+        
+        for ext in ast.ext:
+            if isinstance(ext, c_ast.FuncDef):
+                print_clean_ast(ext)
 
     elif mode == "score":
         for loop in visitor.loops:
