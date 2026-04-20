@@ -384,6 +384,7 @@ class LoopVisitor(c_ast.NodeVisitor):
 
         return order
     
+    # Converts numeric "order" into Big-O notation string
     def order_to_complexity(self, order):
         if order is None:
             return "Unknown"
@@ -399,65 +400,91 @@ class LoopVisitor(c_ast.NodeVisitor):
 
         if order == 2:
             return "O(n^2)"
-        
+            
         if order == 3:
             return "O(n^3)"
-        
+            
         if order == 4:
             return "O(n^4)"
 
+        # Fallback for higher powers like n^5, n^6, etc.
         return f"O(n^{order})"
 
 
-
+    # Called when exiting a loop during traversal
     def _exit_loop(self):
         loop = self.loop_stack.pop()
+
+        # Reward if no dynamic memory was used inside loop
         if loop.no_dynamic_memory:
             loop.score += 10
             loop.pos_reasons.append("No dynamic memory allocation in loop (+10)")
+
+        # Reward if no I/O was used inside loop
         if loop.no_io:
             loop.score += 10
             loop.pos_reasons.append("No I/O operations in loop (+10)")
+
+        # Decrease nesting depth counter
         self.depth -= 1
 
+
+# Collects global variables from the AST
 class GlobalCollector:
     def __init__(self):
         self.globals = set()
 
     def collect(self, ast):
-        # In pycparser, file-scope declarations live in ast.ext
+        # Top-level declarations live in ast.ext
         for ext in ast.ext:
             if isinstance(ext, c_ast.Decl) and ext.name:
                 self.globals.add(ext.name)
 
 
-# Print AST, main function
+# Clean AST Printing (Tree View)
+# Main function to print a filtered AST tree with lines
 def print_clean_ast(node, indent="", last=True):
+    # Only print nodes we care about
     if should_show(node):
         prefix = "└── " if last else "├── "
         print(indent + prefix + label_for(node))
+
+        # Adjust indentation for children
         next_indent = indent + ("    " if last else "│   ")
     else:
+        # If node is hidden, don't change indentation
         next_indent = indent
 
+    # Get filtered children (important nodes only)
     children = expand_children(node)
 
+    # Recursively print children
     for i, child in enumerate(children):
         print_clean_ast(child, next_indent, i == len(children) - 1)
 
-# Helper for print_clean_ast
+
+# Recursively collects only "important" children
 def expand_children(node):
     result = []
 
     for _, child in node.children():
+
+        # Skip function declaration inside FuncDef
+        # (we already show function name in header)
+        if isinstance(node, c_ast.FuncDef) and isinstance(child, c_ast.Decl):
+            continue
+
+        # If child is important, include it
         if should_show(child):
             result.append(child)
         else:
+            # Otherwise, recurse until we find useful nodes
             result.extend(expand_children(child))
 
     return result
 
-# Another helper function, labeling instances
+
+# Defines which AST nodes are worth displaying
 def should_show(node):
     return isinstance(node, (
         c_ast.FuncDef,
@@ -469,35 +496,148 @@ def should_show(node):
         c_ast.Decl
     ))
 
-# Label functions and loops
-def label_for(node):
-    if isinstance(node, c_ast.FuncDef):
-        return f"Function: {node.decl.name}"
 
-    if isinstance(node, c_ast.For):
-        return "For loop"
+# Expression String Conversion
+# Converts AST expressions into readable strings
+def expr_to_str(node):
+    if node is None:
+        return ""
 
-    if isinstance(node, c_ast.While):
-        return "While loop"
+    if isinstance(node, c_ast.ID):
+        return node.name
+
+    if isinstance(node, c_ast.Constant):
+        return node.value
+
+    if isinstance(node, c_ast.BinaryOp):
+        return f"{expr_to_str(node.left)} {node.op} {expr_to_str(node.right)}"
+
+    if isinstance(node, c_ast.Assignment):
+        return f"{expr_to_str(node.lvalue)} {node.op} {expr_to_str(node.rvalue)}"
+
+    if isinstance(node, c_ast.UnaryOp):
+        # Handle ++i / i++ style
+        if node.op in ["p++", "p--", "++", "--"]:
+            return f"{expr_to_str(node.expr)}{node.op.replace('p', '')}"
+        return f"{node.op}{expr_to_str(node.expr)}"
+
+    if isinstance(node, c_ast.ArrayRef):
+        return f"{expr_to_str(node.name)}[{expr_to_str(node.subscript)}]"
 
     if isinstance(node, c_ast.FuncCall):
+        func_name = expr_to_str(node.name)
+
+        if node.args and isinstance(node.args, c_ast.ExprList):
+            args = ", ".join(expr_to_str(arg) for arg in node.args.exprs)
+            return f"{func_name}({args})"
+
+        return f"{func_name}()"
+
+    if isinstance(node, c_ast.Cast):
+        return f"({expr_to_str(node.to_type)}) {expr_to_str(node.expr)}"
+
+    if isinstance(node, c_ast.TernaryOp):
+        return (
+            f"{expr_to_str(node.cond)} ? "
+            f"{expr_to_str(node.iftrue)} : "
+            f"{expr_to_str(node.iffalse)}"
+        )
+
+    if isinstance(node, c_ast.StructRef):
+        return f"{expr_to_str(node.name)}{node.type}{expr_to_str(node.field)}"
+
+    if isinstance(node, c_ast.ExprList):
+        return ", ".join(expr_to_str(expr) for expr in node.exprs)
+
+    if isinstance(node, c_ast.DeclList):
+        return ", ".join(expr_to_str(decl) for decl in node.decls)
+
+    if isinstance(node, c_ast.Decl):
+        if node.init is not None:
+            return f"{node.name} = {expr_to_str(node.init)}"
+        return node.name if node.name else "decl"
+
+    # Fallback for unknown node types
+    return node.__class__.__name__
+
+
+# Label Helpers
+# Formats function header like: Function: main(argc, argv)
+def func_header(node):
+    name = node.decl.name
+    params = []
+
+    funcdecl = node.decl.type
+    if isinstance(funcdecl, c_ast.FuncDecl) and funcdecl.args:
+        for param in funcdecl.args.params:
+            if isinstance(param, c_ast.Decl) and param.name:
+                params.append(param.name)
+
+    return f"Function: {name}({', '.join(params)})"
+
+
+# Formats full for-loop header
+def for_header(node):
+    init = expr_to_str(node.init)
+    cond = expr_to_str(node.cond)
+    nxt = expr_to_str(node.next)
+    return f"For loop: {init}; {cond}; {nxt}"
+
+
+# Formats while-loop condition
+def while_header(node):
+    cond = expr_to_str(node.cond)
+    return f"While loop: {cond}"
+
+# Label Generator
+# Generates readable labels depending on AST node type
+def label_for(node):
+    if isinstance(node, c_ast.FuncDef):
+        return func_header(node)
+
+    if isinstance(node, c_ast.For):
+        # Detailed vs simple output toggle
+        if DETAILED_AST:
+            return for_header(node)
+        return f"For loop ({expr_to_str(node.cond)})"
+
+    if isinstance(node, c_ast.While):
+        if DETAILED_AST:
+            return while_header(node)
+        return f"While loop ({expr_to_str(node.cond)})"
+
+    if isinstance(node, c_ast.FuncCall):
+        if DETAILED_AST:
+            return f"Call: {expr_to_str(node)}"
         if isinstance(node.name, c_ast.ID):
             return f"Call: {node.name.name}"
         return "Call"
 
     if isinstance(node, c_ast.Assignment):
-        return f"Assignment: {node.op}"
+        if DETAILED_AST:
+            return f"Assignment: {expr_to_str(node)}"
+
+        # Simplified version hides RHS details
+        left = expr_to_str(node.lvalue)
+        return f"Assignment: {left} {node.op} ..."
 
     if isinstance(node, c_ast.Return):
+        if DETAILED_AST and node.expr:
+            return f"Return: {expr_to_str(node.expr)}"
         return "Return"
 
-    if isinstance(node, c_ast.Decl) and node.name:
+    if isinstance(node, c_ast.Decl):
+        if DETAILED_AST and node.init is not None:
+            return f"Decl: {node.name} = {expr_to_str(node.init)}"
         return f"Decl: {node.name}"
 
     return node.__class__.__name__
 
 # Main function
 def main(filename, mode, output_file = None):
+    global DETAILED_AST
+    DETAILED_AST = (mode == "ast_verbose")
+
     fake_libc = os.path.join(os.path.dirname(__file__), "fake_libc_include")
     tmp_file = prepare_clean_file(filename, fake_libc)
 
@@ -534,13 +674,13 @@ def main(filename, mode, output_file = None):
 
     print("--------- Loop Analysis ---------")
         
-    if mode == "ast":
+    if mode in ["ast", "ast_verbose"]:
         ast_file = output_file if output_file else "c_ast.txt"
         with open(ast_file, "w") as f:
+
             ast.show(buf=f, showcoord=True)
         print(f"AST written to {ast_file}")
         print()
-        
         for ext in ast.ext:
             if isinstance(ext, c_ast.FuncDef):
                 print_clean_ast(ext)
@@ -592,7 +732,7 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--mode",
-        choices=["english", "score", "ast", "complexity"],
+        choices=["english", "score", "ast", "ast_verbose", "complexity"],
         default="english",
         help="Output mode"
     )
