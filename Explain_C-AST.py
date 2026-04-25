@@ -69,6 +69,7 @@ class LoopInfo:
         self.score = 100                  # Initialize parallelizable score
         self.pos_reasons = []             # Positive reasons for score
         self.neg_reasons = []             # Negative reasons for score
+        self.suggestions = []             # Suggestions on how to improve code
 
         self.contains_mpi = False         # True if MPI calls are found
         self.contains_omp = False         # True if OpenMP runtime calls are found
@@ -170,6 +171,7 @@ class LoopVisitor(c_ast.NodeVisitor):
             loop = self.loop_stack[-1]
             loop.score -= 10
             loop.neg_reasons.append("Contains break statement. (-10)")
+            loop.suggestions.append("Simplify loop control flow to make iterations independent.")
 
     def visit_Assignment(self, node):
         if not self.loop_stack:
@@ -186,11 +188,13 @@ class LoopVisitor(c_ast.NodeVisitor):
             if var_name in self.global_vars:
                 loop.score -= 50
                 loop.neg_reasons.append(f"Writes to global variable '{var_name}', which may cause shared-state conflicts. (-50)")
+                loop.suggestions.append(f"Use thread-local variables or OpenMP reduction to avoid race conditions.")
 
             # Simple reduction check
             if node.op == "+=":
                 loop.score -= 10
-                loop.neg_reasons.append(f"Possible reduction on '{var_name}' (uses +=), it is not ideal as independent work. (-10)")
+                loop.neg_reasons.append(f"Possible reduction on '{var_name}' (uses +=). This may require special handling in parallel code. (-10)")
+                loop.suggestions.append(f"Use an OpenMP reduction clause if '{var_name}' is shared, such as reduction(+:{var_name}).")
 
          # Scalar self‑use: x = f(x, …)
         if isinstance(node.lvalue, c_ast.ID):
@@ -198,6 +202,7 @@ class LoopVisitor(c_ast.NodeVisitor):
             if self._uses_id(node.rvalue, lhs):
                 loop.score -= 20
                 loop.neg_reasons.append(f"Scalar loop-carried dependency on '{lhs}', preventing safe parallel execution. (-20)")
+                loop.suggestions.append(f"Consider using a reduction, prefix-sum algorithm, or refactoring to remove dependency.")
 
         # Array self‑use: arr[i] = f(arr[...], …)
         if isinstance(node.lvalue, c_ast.ArrayRef):
@@ -207,6 +212,7 @@ class LoopVisitor(c_ast.NodeVisitor):
                 if self._uses_array(node.rvalue, arr_name):
                     loop.score -= 30
                     loop.neg_reasons.append(f"Loop-carried dependency on '{arr_name}', preventing safe parallel execution.  (-30)")
+                    loop.suggestions.append(f"Consider using a reduction, prefix-sum algorithm, or refactoring to remove dependency.")
 
         # Always keep walking
         self.generic_visit(node)
@@ -254,11 +260,13 @@ class LoopVisitor(c_ast.NodeVisitor):
                     current_loop.no_dynamic_memory = False
                     current_loop.score -= 15
                     current_loop.neg_reasons.append(f"Dynamic memory allocation inside '{func_name}', it may reduce performance and scalability. (-15)")
+                    current_loop.suggestions.append(f"Move memory allocation outside the loop or reuse preallocated buffers.")
 
                 if func_name in ('printf','fprintf','scanf','fscanf','printf'):
                     current_loop.no_io = False
                     current_loop.score -= 30
                     current_loop.neg_reasons.append(f"I/O operation inside '{func_name}', it may serialize execution and reduce parallel performance. (-30)")
+                    current_loop.suggestions.append(f"Move I/O outside the loop or buffer results and print after computation.")
 
         self.generic_visit(node)
 
@@ -283,6 +291,7 @@ class LoopVisitor(c_ast.NodeVisitor):
         if self.depth > 1:
             loop.score -= 10
             loop.neg_reasons.append("Nested loop increases complexity. (-10)")
+            loop.suggestions.append("Parallelize the outer loop only, or restructure nested loops.")
 
         # For for-loops, extract loop variable, etc.
         if isinstance(node, c_ast.For) and isinstance(node.init, c_ast.DeclList):
@@ -700,6 +709,15 @@ def main(filename, mode, output_file = None):
             print(loop.to_english(pragmas))
             print()
 
+    elif mode == "suggestions":
+        print("Suggestions:\n")
+        for loop in visitor.loops:
+            if loop.suggestions:  # only print if there are suggestions
+                print(f"Loop at line {loop.line}:")
+                for suggestion in loop.suggestions:
+                    print(f"  - {suggestion}")
+                print()
+
     else:
         for loop in visitor.loops:
             print(loop.to_english(pragmas))
@@ -732,7 +750,7 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--mode",
-        choices=["english", "score", "ast", "ast_verbose", "complexity"],
+        choices=["english", "score", "ast", "ast_verbose", "complexity", "suggestions"],
         default="english",
         help="Output mode"
     )
