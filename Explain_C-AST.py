@@ -628,6 +628,11 @@ def label_for(node):
 
         # Simplified version hides RHS details
         left = expr_to_str(node.lvalue)
+        right = expr_to_str(node.rvalue)
+
+        if len(right) <= 12:
+            return f"Assignment: {left} {node.op} {right}"
+        
         return f"Assignment: {left} {node.op} ..."
 
     if isinstance(node, c_ast.Return):
