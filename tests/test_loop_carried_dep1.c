@@ -1,4 +1,4 @@
-// test_lcd_scalar_recurrence.c
+// test_loop_carried_dep1.c
 #include <stdio.h>
 
 int main(void) {

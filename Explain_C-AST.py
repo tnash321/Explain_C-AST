@@ -65,6 +65,7 @@ class LoopInfo:
         self.depth = depth                # Nesting depth
         self.loop_type = loop_type        # "for" or "while"
         self.calls = []                   # Function calls inside this loop
+        self.mpi_calls = []               # MPI calls
 
         self.score = 100                  # Initialize parallelizable score
         self.pos_reasons = []             # Positive reasons for score
@@ -83,8 +84,8 @@ class LoopInfo:
         print(f"Nesting depth: {self.depth}")
         if self.calls:
             print("Function calls inside loop:", ", ".join(self.calls))
-        if self.contains_mpi:
-            print("Contains MPI calls")
+        # if self.contains_mpi:
+        #     print("Contains MPI calls")
         if self.contains_omp:
             print("Contains OpenMP calls")
 
@@ -95,14 +96,17 @@ class LoopInfo:
         if (self.line - 1) in pragmas:
             notes.append("There is an OpenMP pragma directly above this loop.")
 
-        if self.contains_mpi:
-            notes.append("Contains MPI calls.")
+        # if self.contains_mpi:
+        #     notes.append("Contains MPI calls.")
 
         if self.contains_omp:
             notes.append("Contains OpenMP runtime calls.")
 
         if self.calls:
             notes.append("Function calls: " + ", ".join(self.calls))
+
+        if self.contains_mpi:
+            notes.append("MPI calls detected: " + ", ".join(self.mpi_calls))
 
         # Max score is 100/100
         self.score = min(self.score, 100)
@@ -267,6 +271,13 @@ class LoopVisitor(c_ast.NodeVisitor):
                     current_loop.score -= 30
                     current_loop.neg_reasons.append(f"I/O operation inside '{func_name}', it may serialize execution and reduce parallel performance. (-30)")
                     current_loop.suggestions.append(f"Move I/O outside the loop or buffer results and print after computation.")
+
+                if func_name.startswith("MPI_"):
+                    current_loop.contains_mpi = True
+                    current_loop.mpi_calls.append(func_name)
+                    current_loop.score -= 25
+                    current_loop.neg_reasons.append(f"MPI call '{func_name}' inside loop may add communication overhead. (-25)")
+                    current_loop.suggestions.append("Move MPI communication outside the loop when possible, or reduce communication frequency.")
 
         self.generic_visit(node)
 
@@ -626,13 +637,14 @@ def label_for(node):
         if DETAILED_AST:
             return f"Assignment: {expr_to_str(node)}"
 
-        # Simplified version hides RHS details
+        # Define the left and right side
         left = expr_to_str(node.lvalue)
         right = expr_to_str(node.rvalue)
 
         if len(right) <= 12:
             return f"Assignment: {left} {node.op} {right}"
         
+        # Simplified rhs version
         return f"Assignment: {left} {node.op} ..."
 
     if isinstance(node, c_ast.Return):
