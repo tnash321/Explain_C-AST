@@ -22,10 +22,10 @@ Features so far:
 You may test the program for correctness (no error code) with: "pytest -v".
 It will run all of the test programs and indicate whether or not they ran correctly.
 
-![Alt text](image-1.png)
-
 Here is an example of the code running.
 
-![Alt text](image-3.png)
+![Alt text](image-1.png)
 
 And here is an example of pytest -v running.
+
+![Alt text](image-3.png)
