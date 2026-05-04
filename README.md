@@ -26,6 +26,10 @@ Here is an example of the code running.
 
 ![Alt text](image-1.png)
 
-And here is an example of pytest -v running.
+Here is an example of pytest -v running.
 
 ![Alt text](image-3.png)
+
+Here is ast mode vs ast_verbose mode.
+
+![Alt text](image-4.png)
